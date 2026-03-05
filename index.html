@@ -5,24 +5,64 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Service Pro CI - L'Annuaire des Artisans</title>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background-color: #f4f4f9; }
-        h1 { color: #2962FF; }
-        .container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
-        .contact { margin-top: 20px; font-weight: bold; }
+        :root { --primary: #0056b3; --dark: #333; --light: #f4f7f6; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; color: var(--dark); background-color: white; line-height: 1.6; }
+        header { background: white; padding: 20px 10%; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eaeaea; }
+        .logo { font-size: 24px; font-weight: bold; color: var(--primary); }
+        .hero { text-align: center; padding: 80px 20px; background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?auto=format&fit=crop&w=1000&q=80') center/cover; color: white; }
+        .hero h1 { font-size: 2.5rem; margin-bottom: 10px; }
+        .badge { background: #ff7f50; color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.9rem; font-weight: bold; display: inline-block; margin-bottom: 20px; }
+        .features { display: flex; justify-content: space-around; padding: 50px 10%; flex-wrap: wrap; background: var(--light); }
+        .feature-card { background: white; padding: 20px; border-radius: 8px; width: 30%; min-width: 250px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; }
+        footer { background: var(--dark); color: white; text-align: center; padding: 40px 20px; }
+        .contact-info { font-size: 1.1rem; margin-bottom: 20px; }
+        .contact-info a { color: #ff7f50; text-decoration: none; }
+        .legal { font-size: 0.8rem; color: #aaa; }
+        .legal a { color: #aaa; text-decoration: none; margin: 0 10px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Service Pro CI</h1>
-        <p>La première plateforme de mise en relation directe avec les meilleurs artisans en Côte d'Ivoire.</p>
-        <p><strong>Statut :</strong> Application mobile en cours de déploiement (Pré-lancement).</p>
-        <div class="contact">
-            <p>📞 Contact : 07 67 32 18 16</p>
-            <p>✉️ Email : dossouaanthelme@gmail.com</p>
-        </div>
-        <p style="font-size: 12px; color: gray; margin-top: 30px;">
-            © 2026 Service Pro CI. <a href="#">Politique de confidentialité</a> | <a href="#">Conditions d'utilisation</a>
-        </p>
+
+    <header>
+        <div class="logo">Service Pro CI</div>
+        <div>Plateforme de mise en relation</div>
+    </header>
+
+    <div class="hero">
+        <div class="badge">🚀 Application en phase de pré-lancement</div>
+        <h1>Trouvez le bon artisan, en un clic.</h1>
+        <p>La première plateforme numérique pour contacter directement les meilleurs professionnels en Côte d'Ivoire.</p>
     </div>
+
+    <div class="features">
+        <div class="feature-card">
+            <h3>🛠️ Profils Vérifiés</h3>
+            <p>Accédez à un annuaire d'artisans qualifiés pour tous vos travaux et services.</p>
+        </div>
+        <div class="feature-card">
+            <h3>📱 Simple & Rapide</h3>
+            <p>Une application mobile intuitive pour trouver un prestataire près de chez vous en quelques secondes.</p>
+        </div>
+        <div class="feature-card">
+            <h3>🤝 Contact Direct</h3>
+            <p>Discutez et négociez directement avec l'artisan de votre choix.</p>
+        </div>
+    </div>
+
+    <footer>
+        <div class="contact-info">
+            <p><strong>Contactez-nous :</strong></p>
+            <p>📞 07 67 32 18 16</p>
+            <p>✉️ <a href="mailto:contact.serviceproci@gmail.com">contact.serviceproci@gmail.com</a></p>
+        </div>
+        <div class="legal">
+            <p>© 2026 Service Pro CI. Tous droits réservés.</p>
+            <p>
+                <a href="#">Politique de Confidentialité</a> | 
+                <a href="#">Conditions d'Utilisation</a>
+            </p>
+        </div>
+    </footer>
+
 </body>
 </html>
