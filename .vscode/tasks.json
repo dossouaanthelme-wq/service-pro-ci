@@ -1,0 +1,25 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Flutter release build",
+			"type": "shell",
+			"command": "flutter clean && flutter pub get && flutter build appbundle --release",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Flutter release build",
+			"type": "shell",
+			"command": "cmd /C \"flutter clean && flutter pub get && flutter build appbundle --release\"",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

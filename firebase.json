@@ -1,0 +1,59 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "service-pro-ci",
+          "appId": "1:844779781107:android:a75d69d371326214e3f086",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "service-pro-ci",
+          "configurations": {
+            "android": "1:844779781107:android:a75d69d371326214e3f086",
+            "ios": "1:844779781107:ios:bb0af44746691033e3f086",
+            "macos": "1:844779781107:ios:bb0af44746691033e3f086",
+            "web": "1:844779781107:web:72448c970dd802fce3f086",
+            "windows": "1:844779781107:web:82b2f6591948e7ace3f086"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "functions": [
+    {
+      "codebase": "default",
+      "source": "functions",
+      "runtime": "nodejs22",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
+}

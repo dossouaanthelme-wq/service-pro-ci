@@ -1,0 +1,95 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+# Fichiers sensibles - Ne jamais committer !
+android/key.properties
+service_pro_ci.jks
+*.jks
+
+# Build outputs
+android/app/build/
+build/
+
+# Firebase
+google-services.json
+serviceAccountKey.json
+
+android/replay_pid*.log
+# Node.js
+node_modules/
+functions/node_modules/
+functions/package-lock.json
+package-lock.json
+
+# Android build supplémentaire
+android/build/
+
+# Fichiers de test temporaires
+app-from-store.apk
+app_temp.apk
+build_log.txt
+.firebase/
+k y c _ l o g . t x t  
+ 
+kyc_log.txt
+diff_main.txt
+# Fichiers sensibles supplémentaires
+.flutter-plugins
+android/local.properties
+ios/Flutter/flutter_export_environment.sh
+ios/Runner/GoogleService-Info.plist
+**/GoogleService-Info.plist
+ios/Pods/
+ios/.symlinks/
+.env
+.env.local
+android/app/*.jks
+android/app/*.keystore
+service_pro_ci.jks
+*.jks
+*.zip
+gradle_log.txt
+lib/.gradle/
+lib/ios/

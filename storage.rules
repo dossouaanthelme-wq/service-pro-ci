@@ -1,0 +1,61 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && request.auth.uid == 'rZASbWUSzCXrFOs8GqZd7YTD6A53'
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // KYC: fichiers privés, accessibles seulement au propriétaire ou à l'admin.
+    match /verifications_clients/{uid}/{fileName} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if signedIn() && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if signedIn() && (request.auth.uid == uid || isAdmin());
+    }
+
+    match /verifications_artisans/{uid}/{fileName} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if signedIn() && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if signedIn() && (request.auth.uid == uid || isAdmin());
+    }
+
+    // Photos de profils et portfolio déjà affichées dans l'application.
+    match /photos_artisans/{fileName} {
+      allow read: if true;
+      allow write: if signedIn() && fileName == request.auth.uid + '.jpg';
+      allow delete: if signedIn() && fileName == request.auth.uid + '.jpg';
+    }
+
+    match /photos_clients/{fileName} {
+      allow read: if true;
+      allow write: if signedIn() && fileName == request.auth.uid + '.jpg';
+      allow delete: if signedIn() && fileName == request.auth.uid + '.jpg';
+    }
+
+    match /documents_artisans/{fileName} {
+      allow read: if signedIn() && fileName == request.auth.uid + '.jpg';
+      allow write: if signedIn() && fileName == request.auth.uid + '.jpg';
+      allow delete: if signedIn() && fileName == request.auth.uid + '.jpg';
+    }
+
+    match /artisans/{uid}/{fileName} {
+      allow read: if true;
+      allow write: if signedIn() && request.auth.uid == uid;
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

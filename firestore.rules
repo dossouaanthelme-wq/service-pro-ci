@@ -1,0 +1,108 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && request.auth.uid == 'rZASbWUSzCXrFOs8GqZd7YTD6A53'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isAllowedUserUpdate(userId) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let protected = [
+        'identifiantUnique',
+        'dateValidation',
+        'qrCodeData',
+        'motifRejet'
+      ];
+      let kycFields = [
+        'selfieUrl',
+        'documentUrl',
+        'typeDocument',
+        'dateSoumission',
+        'statutVerification'
+      ];
+      return signedIn()
+        && request.auth.uid == userId
+        && !changed.hasAny(protected)
+        && (
+          !changed.hasAny(kycFields)
+          || (
+            request.resource.data.statutVerification == null
+            && (
+              !resource.data.keys().hasAny(['statutVerification'])
+              || resource.data.statutVerification == null
+              || resource.data.statutVerification == 'non_soumis'
+            )
+          )
+          || (
+            changed.hasOnly(kycFields)
+            && request.resource.data.statutVerification == 'en_attente'
+            && (
+              !resource.data.keys().hasAny(['statutVerification'])
+              || resource.data.statutVerification in ['non_soumis', 'rejete', null]
+            )
+          )
+        );
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && (
+          !request.resource.data.keys().hasAny(['statutVerification'])
+          || (
+            request.resource.data.keys().hasAny(['statutVerification'])
+            && (
+              request.resource.data.statutVerification == null
+              || request.resource.data.statutVerification in ['non_soumis', 'en_attente']
+            )
+          )
+        )
+        && !request.resource.data.keys().hasAny([
+          'identifiantUnique',
+          'dateValidation',
+          'qrCodeData',
+          'motifRejet'
+        ]);
+      allow update: if isAllowedUserUpdate(userId) || isAdmin();
+      allow delete: if signedIn()
+        && (request.auth.uid == userId || isAdmin());
+    }
+
+    match /notifications/{notificationId} {
+      allow read, update: if signedIn()
+        && (resource.data.targetUserId == request.auth.uid || isAdmin());
+      allow create: if signedIn();
+      allow delete: if isAdmin();
+    }
+
+    // Vue publique minimale : aucun document KYC ni téléphone n'est exposé.
+    match /identifiants_verifies/{identifiant} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /artisans/{artisanId} {
+      allow read: if true;
+      allow create, update: if signedIn() && (request.auth.uid == artisanId || isAdmin());
+      allow delete: if signedIn() && (request.auth.uid == artisanId || isAdmin());
+
+      match /commentaires/{commentaireId} {
+        allow read: if true;
+        allow create: if signedIn();
+        allow update, delete: if signedIn();
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
