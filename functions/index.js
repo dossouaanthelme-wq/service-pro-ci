@@ -17,6 +17,31 @@ const LETEXTO_SENDER = "ServicePro";
 const LETEXTO_URL = "https://apis.letexto.com/v1/messages/send";
 const OTP_DUREE_MS = 5 * 60 * 1000;
 
+exports.verifierNumeroExistant = onCall(
+  async (request) => {
+    const telephone = request.data?.telephone;
+    if (typeof telephone !== "string") {
+      throw new Error("Numéro de téléphone requis");
+    }
+
+    const comptesExistants = await admin.firestore()
+      .collection("users")
+      .where("telephone", "==", telephone)
+      .limit(1)
+      .get();
+
+    if (comptesExistants.empty) {
+      return { compteExistant: false };
+    }
+
+    const emailSynthetique = comptesExistants.docs[0].data().emailSynthetique;
+    return {
+      compteExistant:
+        typeof emailSynthetique === "string" && emailSynthetique.length > 0,
+    };
+  }
+);
+
 exports.genererEtEnvoyerOtpLeTexto = onCall(
   { secrets: [LETEXTO_TOKEN] },
   async (request) => {

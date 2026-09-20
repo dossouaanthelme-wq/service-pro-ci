@@ -62,6 +62,21 @@ class _EcranAuthTelephoneState extends State<EcranAuthTelephone> {
       return;
     }
 
+    try {
+      final callable = FirebaseFunctions.instance.httpsCallable(
+        'verifierNumeroExistant',
+      );
+      final result = await callable.call({'telephone': telephone});
+      final compteExistant = result.data['compteExistant'] == true;
+      if (compteExistant) {
+        _afficherErreur('Ce numéro a déjà un compte. Connectez-vous.');
+        return;
+      }
+    } catch (_) {
+      _afficherErreur('Connexion impossible. Réessayez.');
+      return;
+    }
+
     final operateur = determinerOperateur(numeroFormate);
 
     setState(() => _enChargement = true);
