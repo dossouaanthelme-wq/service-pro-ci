@@ -99,9 +99,10 @@ class _EcranVerificationArtisanState extends State<EcranVerificationArtisan> {
         MaterialPageRoute(builder: (_) => const EcranProfil()),
       );
     } catch (e) {
+      debugPrint('Erreur soumission vérification : $e');
       if (mounted) {
         setState(() => _enChargement = false);
-        _afficherErreur('Impossible de soumettre la vérification : $e');
+        _afficherErreur('Connexion instable. Veuillez réessayer.');
       }
     }
   }

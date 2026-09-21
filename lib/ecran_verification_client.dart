@@ -106,9 +106,10 @@ class _EcranVerificationClientState extends State<EcranVerificationClient> {
         (route) => false,
       );
     } catch (e) {
+      debugPrint('Erreur soumission vérification : $e');
       if (mounted) {
         setState(() => _enChargement = false);
-        _afficherErreur('Impossible de soumettre la vérification : $e');
+        _afficherErreur('Connexion instable. Veuillez réessayer.');
       }
     }
   }

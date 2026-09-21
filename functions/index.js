@@ -2,7 +2,7 @@ const {
   onDocumentCreated,
   onDocumentUpdated,
 } = require("firebase-functions/v2/firestore");
-const { onCall, onRequest } = require("firebase-functions/v2/https");
+const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
@@ -21,7 +21,7 @@ exports.verifierNumeroExistant = onCall(
   async (request) => {
     const telephone = request.data?.telephone;
     if (typeof telephone !== "string") {
-      throw new Error("Numéro de téléphone requis");
+      throw new HttpsError("invalid-argument", "Numéro de téléphone requis");
     }
 
     const comptesExistants = await admin.firestore()
@@ -48,7 +48,7 @@ exports.genererEtEnvoyerOtpLeTexto = onCall(
     const { telephone } = request.data;
 
     if (!telephone || !/^\+225\d{10}$/.test(telephone)) {
-      throw new Error("Numéro invalide. Format attendu : +225XXXXXXXXXX");
+      throw new HttpsError("invalid-argument", "Numéro invalide. Format attendu : +225XXXXXXXXXX");
     }
 
     const code = String(crypto.randomInt(100000, 999999));
@@ -82,7 +82,7 @@ exports.genererEtEnvoyerOtpLeTexto = onCall(
       return { success: true };
     } catch (e) {
       console.error("❌ Erreur SMS LeTexto :", e.response?.data || e.message);
-      throw new Error("Erreur envoi SMS : " + JSON.stringify(e.response?.data || e.message));
+      throw new HttpsError("invalid-argument", "Erreur envoi SMS : " + JSON.stringify(e.response?.data || e.message));
     }
   }
 );
@@ -93,25 +93,25 @@ exports.verifierOtpLeTexto = onCall(
     const { telephone, code } = request.data;
 
     if (!telephone || !code) {
-      throw new Error("Numéro et code requis");
+      throw new HttpsError("invalid-argument", "Numéro et code requis");
     }
 
     const docRef = admin.firestore().collection("otp_codes").doc(telephone);
     const doc = await docRef.get();
 
     if (!doc.exists) {
-      throw new Error("Code introuvable ou déjà utilisé. Recommencez.");
+      throw new HttpsError("invalid-argument", "Code introuvable ou déjà utilisé. Recommencez.");
     }
 
     const data = doc.data();
 
     if (Date.now() > data.expiresAt) {
       await docRef.delete();
-      throw new Error("Code expiré. Recommencez.");
+      throw new HttpsError("invalid-argument", "Code expiré. Recommencez.");
     }
 
     if (data.code !== code) {
-      throw new Error("Code incorrect.");
+      throw new HttpsError("invalid-argument", "Code incorrect.");
     }
 
     await docRef.delete();
