@@ -50,7 +50,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     platformChannelSpecifics,
   );
 }
-
 Future<void> _initNotificationsBackground() async {
   FirebaseMessaging messaging = FirebaseMessaging.instance;
   FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -159,7 +158,6 @@ Future<void> _initNotificationsBackground() async {
     }
   });
 }
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -385,7 +383,6 @@ class _EcranSplashState extends State<EcranSplash>
     );
   }
 }
-
 class _ServiceProAppState extends State<ServiceProApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
@@ -429,7 +426,7 @@ class _ServiceProAppState extends State<ServiceProApp> {
     }
 
     // ✅ Connexion email → vérifier si email vérifié
-    if (!userActuel.emailVerified) {
+    if (!userActuel.emailVerified && userActuel.phoneNumber == null) {
             debugPrint(
         'Déconnexion au démarrage : email non vérifié, '
         'providers=${userActuel.providerData.map((p) => p.providerId).toList()}, '
@@ -499,7 +496,6 @@ class _ServiceProAppState extends State<ServiceProApp> {
     );
   }
 }
-
 // ==========================================
 // WIDGET : POINTS DE CHARGEMENT ANIMÉS
 // ==========================================
@@ -667,8 +663,6 @@ class _EcranAccueilState extends State<EcranAccueil>
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: _buildAppBar(user),
       drawer: const MenuLateral(),
-      // ✅ AJOUTE ICI (ligne 624)
-      // floatingActionButton: const BoutonAssistantIA(),
       body: _chargement
           ? const Center(
               child: CircularProgressIndicator(color: Colors.blueAccent),
@@ -6798,129 +6792,3 @@ class _EcranTutorielState extends State<EcranTutoriel> {
   }
 }
 
-// ==========================================
-// ÉCRAN : ASSISTANT IA
-// ==========================================
-class EcranAssistantIA extends StatefulWidget {
-  const EcranAssistantIA({super.key});
-
-  @override
-  State<EcranAssistantIA> createState() => _EcranAssistantIAState();
-}
-
-class _EcranAssistantIAState extends State<EcranAssistantIA> {
-  final TextEditingController _controller = TextEditingController();
-  final List<Map<String, String>> _messages = [];
-  bool _enChargement = false;
-
-  Future<void> _envoyerMessage(String texte) async {
-  if (texte.trim().isEmpty) return;
-  setState(() {
-    _messages.add({'role': 'user', 'text': texte});
-    _enChargement = true;
-  });
-  _controller.clear();
-
-  try {
-    final callable = FirebaseFunctions.instance.httpsCallable('chatWithClaude');
-    final result = await callable.call({'message': texte});
-    final reponse = result.data['reply'] ?? 'Erreur de réponse.';
-
-    setState(() {
-      _messages.add({'role': 'bot', 'text': reponse});
-      _enChargement = false;
-    });
-  } catch (e) {
-    setState(() {
-      _messages.add({'role': 'bot', 'text': 'Erreur : impossible de contacter l\'assistant.'});
-      _enChargement = false;
-    });
-  }
-}
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      appBar: AppBar(
-        title: const Text('Assistant IA'),
-        backgroundColor: const Color(0xFF1565C0),
-        foregroundColor: Colors.white,
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final msg = _messages[index];
-                final isUser = msg['role'] == 'user';
-                return Align(
-                  alignment: isUser
-                      ? Alignment.centerRight
-                      : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isUser ? const Color(0xFF1565C0) : Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black12, blurRadius: 4),
-                      ],
-                    ),
-                    child: Text(
-                      msg['text']!,
-                      style: TextStyle(
-                        color: isUser ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          if (_enChargement)
-            const Padding(
-              padding: EdgeInsets.all(8),
-              child: CircularProgressIndicator(color: Color(0xFF1565C0)),
-            ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: InputDecoration(
-                      hintText: 'Posez votre question...',
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: () => _envoyerMessage(_controller.text),
-                  icon: const Icon(
-                    Icons.send_rounded,
-                    color: Color(0xFF1565C0),
-                    size: 28,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

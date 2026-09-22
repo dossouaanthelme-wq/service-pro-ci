@@ -51,14 +51,43 @@ exports.genererEtEnvoyerOtpLeTexto = onCall(
       throw new HttpsError("invalid-argument", "Numéro invalide. Format attendu : +225XXXXXXXXXX");
     }
 
+    const otpRef = admin.firestore().collection("otp_codes").doc(telephone);
+    const otpDoc = await otpRef.get();
+
+    if (otpDoc.exists) {
+      const existant = otpDoc.data();
+      const depuisDernierEnvoi = Date.now() - (existant.lastSentAt || 0);
+      if (depuisDernierEnvoi < 60 * 1000) {
+        throw new HttpsError("resource-exhausted", "Veuillez patienter avant de redemander un code.");
+      }
+    }
+
+    const aujourdHui = new Date().toISOString().slice(0, 10);
+    const compteurRef = admin.firestore()
+      .collection("otp_daily_count")
+      .doc(`${telephone}_${aujourdHui}`);
+    const compteurDoc = await compteurRef.get();
+    const envoisAujourdHui = compteurDoc.exists ? (compteurDoc.data().count || 0) : 0;
+
+    if (envoisAujourdHui >= 5) {
+      throw new HttpsError("resource-exhausted", "Limite quotidienne de codes atteinte. Réessayez demain.");
+    }
+
     const code = String(crypto.randomInt(100000, 999999));
     const expiresAt = Date.now() + OTP_DUREE_MS;
 
-    await admin.firestore().collection("otp_codes").doc(telephone).set({
+    await otpRef.set({
       code,
       expiresAt,
+      attempts: 0,
+      lastSentAt: Date.now(),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
+
+    await compteurRef.set(
+      { count: admin.firestore.FieldValue.increment(1) },
+      { merge: true }
+    );
 
     const numeroSansPlus = telephone.replace("+", "");
 
@@ -82,7 +111,7 @@ exports.genererEtEnvoyerOtpLeTexto = onCall(
       return { success: true };
     } catch (e) {
       console.error("❌ Erreur SMS LeTexto :", e.response?.data || e.message);
-      throw new HttpsError("invalid-argument", "Erreur envoi SMS : " + JSON.stringify(e.response?.data || e.message));
+      throw new HttpsError("internal", "Erreur envoi SMS : " + JSON.stringify(e.response?.data || e.message));
     }
   }
 );
@@ -111,6 +140,12 @@ exports.verifierOtpLeTexto = onCall(
     }
 
     if (data.code !== code) {
+      const tentatives = (data.attempts || 0) + 1;
+      if (tentatives >= 5) {
+        await docRef.delete();
+        throw new HttpsError("resource-exhausted", "Trop de tentatives incorrectes. Demandez un nouveau code.");
+      }
+      await docRef.update({ attempts: tentatives });
       throw new HttpsError("invalid-argument", "Code incorrect.");
     }
 
@@ -246,45 +281,6 @@ exports.notifierVerificationArtisan = onDocumentUpdated(
     return null;
   }
 );
-// ── Secret pour Claude ────────────────────────────────────────────────
-const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
-
-// ── Assistant IA (Claude) ─────────────────────────────────────────────
-exports.chatWithClaude = onCall(
-  { secrets: [ANTHROPIC_API_KEY] },
-  async (request) => {
-    const userMessage = request.data.message;
-
-    if (!userMessage || userMessage.trim() === "") {
-      throw new Error("Le message ne peut pas être vide.");
-    }
-
-    try {
-      const response = await axios.post(
-        "https://api.anthropic.com/v1/messages",
-        {
-          model: "claude-haiku-4-5",
-          max_tokens: 500,
-          messages: [{ role: "user", content: userMessage }],
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": ANTHROPIC_API_KEY.value(),
-            "anthropic-version": "2023-06-01",
-          },
-        }
-      );
-
-      const texte = response.data?.content?.[0]?.text ?? "Désolé, je n'ai pas compris.";
-      return { reply: texte };
-    } catch (e) {
-      console.error("❌ Erreur Claude :", e.response?.data || e.message);
-      throw new Error("Erreur assistant IA : " + JSON.stringify(e.response?.data || e.message));
-    }
-  }
-);
-
 // ── GeniusPay : création du lien de paiement Premium ────────────────────
 const GENIUSPAY_API_KEY = defineSecret("GENIUSPAY_API_KEY");
 const GENIUSPAY_API_SECRET = defineSecret("GENIUSPAY_API_SECRET");
@@ -292,11 +288,27 @@ const GENIUSPAY_API_SECRET = defineSecret("GENIUSPAY_API_SECRET");
 exports.creerLienPaiementPremium = onCall(
   { secrets: [GENIUSPAY_API_KEY, GENIUSPAY_API_SECRET] },
   async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Connexion requise.");
+    }
+
     const docId = request.data?.docId;
-    if (!docId) throw new Error("docId requis");
+    if (!docId) throw new HttpsError("invalid-argument", "docId requis");
+
+    if (docId !== request.auth.uid) {
+      throw new HttpsError(
+        "permission-denied",
+        "Vous ne pouvez créer un paiement Premium que pour votre propre compte."
+      );
+    }
 
     try {
       const artisanSnap = await admin.firestore().collection("artisans").doc(docId).get();
+
+      if (!artisanSnap.exists) {
+        throw new HttpsError("not-found", "Profil artisan introuvable.");
+      }
+
       const telephone = artisanSnap.data()?.telephone;
 
       const response = await axios.post(
@@ -319,12 +331,13 @@ exports.creerLienPaiementPremium = onCall(
       );
 
       const checkoutUrl = response.data?.data?.checkout_url;
-      if (!checkoutUrl) throw new Error("Réponse GeniusPay invalide");
+      if (!checkoutUrl) throw new HttpsError("internal", "Réponse GeniusPay invalide");
 
       return { checkout_url: checkoutUrl };
     } catch (e) {
+      if (e instanceof HttpsError) throw e;
       console.error("❌ Erreur création paiement GeniusPay :", e.response?.data || e.message);
-      throw new Error("Erreur création lien de paiement : " + JSON.stringify(e.response?.data || e.message));
+      throw new HttpsError("internal", "Erreur création lien de paiement : " + JSON.stringify(e.response?.data || e.message));
     }
   }
 );
