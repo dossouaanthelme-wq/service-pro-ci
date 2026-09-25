@@ -60,8 +60,6 @@ android/replay_pid*.log
 # Node.js
 node_modules/
 functions/node_modules/
-functions/package-lock.json
-package-lock.json
 
 # Android build supplémentaire
 android/build/
@@ -71,7 +69,8 @@ app-from-store.apk
 app_temp.apk
 build_log.txt
 .firebase/
-k y c _ l o g . t x t  
+k y c _ l o g . t x t 
+ 
  
 kyc_log.txt
 diff_main.txt

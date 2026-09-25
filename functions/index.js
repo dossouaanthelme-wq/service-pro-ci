@@ -332,8 +332,8 @@ exports.creerLienPaiementPremium = onCall(
           description: "Abonnement Premium Artisan (30 jours)",
           ...(telephone ? { customer: { phone: telephone } } : {}),
           metadata: { docId, reference },
-          success_url: "https://service-pro-ci.web.app/premium-success",
-          error_url: "https://service-pro-ci.web.app/premium-error",
+          success_url: "https://service-pro-ci.web.app/premium-success.html",
+          error_url: "https://service-pro-ci.web.app/premium-error.html",
         },
         {
           headers: {
