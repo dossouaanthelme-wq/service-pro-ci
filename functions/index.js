@@ -309,7 +309,21 @@ exports.creerLienPaiementPremium = onCall(
         throw new HttpsError("not-found", "Profil artisan introuvable.");
       }
 
+      const userSnap = await admin.firestore().collection("users").doc(docId).get();
+      if (!userSnap.exists || userSnap.data()?.role !== "artisan") {
+        throw new HttpsError("permission-denied", "Ce compte n'est pas un profil artisan.");
+      }
+
       const telephone = artisanSnap.data()?.telephone;
+      const reference = `${docId}_${Date.now()}`;
+      await admin.firestore().collection("pending_payments").doc(reference).set({
+        uid: request.auth.uid,
+        docId,
+        montant: 2000,
+        devise: "XOF",
+        statut: "pending",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
       const response = await axios.post(
         "https://geniuspay.ci/api/v1/merchant/payments",
@@ -317,7 +331,7 @@ exports.creerLienPaiementPremium = onCall(
           amount: 2000,
           description: "Abonnement Premium Artisan (30 jours)",
           ...(telephone ? { customer: { phone: telephone } } : {}),
-          metadata: { docId },
+          metadata: { docId, reference },
           success_url: "https://service-pro-ci.web.app/premium-success",
           error_url: "https://service-pro-ci.web.app/premium-error",
         },
@@ -332,6 +346,16 @@ exports.creerLienPaiementPremium = onCall(
 
       const checkoutUrl = response.data?.data?.checkout_url;
       if (!checkoutUrl) throw new HttpsError("internal", "Réponse GeniusPay invalide");
+
+      try {
+        const checkoutHostname = new URL(checkoutUrl).hostname;
+        if (!checkoutHostname.endsWith("geniuspay.ci")) {
+          throw new HttpsError("internal", "URL de paiement invalide");
+        }
+      } catch (e) {
+        if (e instanceof HttpsError) throw e;
+        throw new HttpsError("internal", "URL de paiement invalide");
+      }
 
       return { checkout_url: checkoutUrl };
     } catch (e) {
@@ -378,15 +402,50 @@ exports.geniuspayWebhook = onRequest(
     const event = req.body;
     if (event.event === "payment.success" && event.data?.status === "completed") {
       const docId = event.data.metadata?.docId;
-      if (!docId) return res.status(400).send("No docId in metadata");
+      const reference = event.data.metadata?.reference;
+      if (!docId || !reference) return res.status(400).send("Missing payment metadata");
+
+      const amount = event.data.amount;
+      const devise = event.data.currency ?? event.data.devise;
+      if (amount !== 2000 || devise !== "XOF") {
+        return res.status(400).send("Invalid payment amount or currency");
+      }
+
+      const db = admin.firestore();
+      const pendingPaymentRef = db.collection("pending_payments").doc(reference);
+      const pendingPayment = await pendingPaymentRef.get();
+      if (!pendingPayment.exists || pendingPayment.data()?.statut === "completed") {
+        return res.status(200).send("OK");
+      }
 
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 30);
 
-      await admin.firestore().collection("artisans").doc(docId).update({
-        isPremium: true,
-        premiumExpiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+      const paiementActive = await db.runTransaction(async (transaction) => {
+        const pendingSnapshot = await transaction.get(pendingPaymentRef);
+        if (!pendingSnapshot.exists || pendingSnapshot.data()?.statut === "completed") {
+          return false;
+        }
+
+        const pendingData = pendingSnapshot.data();
+        if (pendingData?.docId !== docId) {
+          throw new Error("Payment metadata mismatch");
+        }
+
+        const artisanRef = db.collection("artisans").doc(docId);
+        transaction.update(pendingPaymentRef, {
+          statut: "completed",
+        });
+        transaction.update(artisanRef, {
+          isPremium: true,
+          premiumExpiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+        });
+        return true;
       });
+
+      if (!paiementActive) {
+        return res.status(200).send("OK");
+      }
 
       try {
         const artisanDoc = await admin.firestore().collection("artisans").doc(docId).get();

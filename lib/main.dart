@@ -23,6 +23,7 @@ import 'ecran_badge_identite.dart';
 import 'ecran_verification_identifiant.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:app_links/app_links.dart';
 import 'dart:async';
 
 const String serviceProAdminUid = 'rZASbWUSzCXrFOs8GqZd7YTD6A53';
@@ -385,14 +386,51 @@ class _EcranSplashState extends State<EcranSplash>
 }
 class _ServiceProAppState extends State<ServiceProApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  final AppLinks _appLinks = AppLinks();
+  StreamSubscription<Uri>? _deepLinkSubscription;
 
   @override
   void initState() {
     super.initState();
+    _initialiserDeepLinks();
     Future.delayed(const Duration(milliseconds: 3500), () {
       if (!mounted) return;
       _verifierSessionEtNaviguer();
     });
+  }
+
+  Future<void> _initialiserDeepLinks() async {
+    _deepLinkSubscription = _appLinks.uriLinkStream.listen(_gererDeepLink);
+    final initialUri = await _appLinks.getInitialLink();
+    if (initialUri != null) _gererDeepLink(initialUri);
+  }
+
+  void _gererDeepLink(Uri uri) {
+    if (uri.scheme != 'serviceproci' || uri.host != 'premium') return;
+
+    final message = switch (uri.path) {
+      '/success' => 'Paiement réussi, Premium activé !',
+      '/error' => 'Paiement échoué, veuillez réessayer.',
+      _ => null,
+    };
+    if (message == null) return;
+
+    void afficher() {
+      final context = _navigatorKey.currentState?.overlay?.context;
+      if (context == null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => afficher());
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    }
+
+    afficher();
+  }
+
+  @override
+  void dispose() {
+    _deepLinkSubscription?.cancel();
+    super.dispose();
   }
 
   // ✅ NOUVELLE FONCTION : Vérification sécurisée au démarrage
