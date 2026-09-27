@@ -1798,6 +1798,7 @@ class EcranDetailArtisan extends StatefulWidget {
 
 class _EcranDetailArtisanState extends State<EcranDetailArtisan> {
   final _commentaireController = TextEditingController();
+  bool _voirTousAvis = false;
 
   String get _proprietaireUid =>
       (widget.artisan['uid'] ?? widget.docId).toString();
@@ -1805,6 +1806,7 @@ class _EcranDetailArtisanState extends State<EcranDetailArtisan> {
   bool get _estProprietaire =>
       FirebaseAuth.instance.currentUser?.uid == _proprietaireUid;
 
+/// 🔥 ENVOYER UNE NOTIFICATION PUSH À L'ARTISAN
   Future<void> _sendNotification(
     String token,
     String title,
@@ -1830,11 +1832,13 @@ class _EcranDetailArtisanState extends State<EcranDetailArtisan> {
     }
   }
 
+/// 🔥 LANCER UN APPEL TÉLÉPHONIQUE
   Future<void> _lancerAppel() async {
     final Uri url = Uri(scheme: 'tel', path: widget.artisan['telephone']);
     if (await canLaunchUrl(url)) await launchUrl(url);
   }
 
+/// 🔥 AJOUTER UN COMMENTAIRE
   Future<void> _ajouterCommentaire() async {
     if (_commentaireController.text.trim().isEmpty) return;
 
@@ -1875,6 +1879,7 @@ class _EcranDetailArtisanState extends State<EcranDetailArtisan> {
         .add({
           'texte': commentText,
           'auteur': auteur,
+          'authorId': user.uid,
           'date': FieldValue.serverTimestamp(),
           'replyText': null,
           'replyTimestamp': null,
@@ -1902,8 +1907,8 @@ class _EcranDetailArtisanState extends State<EcranDetailArtisan> {
     );
   }
 
+/// 🔥 SUPPRIMER UN COMMENTAIRE
   Future<void> _supprimerCommentaire(String commentaireId) async {
-    if (!_estProprietaire) return;
     final confirme = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1921,16 +1926,28 @@ class _EcranDetailArtisanState extends State<EcranDetailArtisan> {
         ],
       ),
     );
-    if (confirme != true || !_estProprietaire) return;
+    if (confirme != true) return;
 
-    await FirebaseFirestore.instance
-        .collection('artisans')
-        .doc(widget.docId)
-        .collection('commentaires')
-        .doc(commentaireId)
-        .delete();
+    try {
+      await FirebaseFirestore.instance
+          .collection('artisans')
+          .doc(widget.docId)
+          .collection('commentaires')
+          .doc(commentaireId)
+          .delete();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Impossible de supprimer cet avis.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
+/// 🔥 AFFICHER LA BOÎTE DE DIALOGUE POUR CHANGER LA PHOTO DE PROFIL
   void _afficherPortfolioPublic(String imageUrl, String description) {
     showDialog(
       context: context,
@@ -2321,67 +2338,82 @@ class _EcranDetailArtisanState extends State<EcranDetailArtisan> {
                         .orderBy('date', descending: true)
                         .snapshots(),
                     builder: (context, snapshot) {
-                      if (snapshot.hasError)
+                      if (snapshot.hasError) {
                         return const Center(
-                          child: Text(
-                            "Aucun message pour le moment",
-                            style: TextStyle(
-                              color: Colors.grey,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
+                          child: Text('Aucun message pour le moment'),
                         );
-                      if (!snapshot.hasData)
-                        return const Center(child: CircularProgressIndicator());
-                      var commentaires = snapshot.data!.docs;
-                      if (commentaires.isEmpty)
-                        return const Text(
-                          "Aucun commentaire pour le moment. Soyez le premier !",
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        );
+                      }
 
-                      return ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: commentaires.length,
-                        itemBuilder: (context, index) {
-                          var com =
-                              commentaires[index].data()
+                      if (!snapshot.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      }
+
+                      final tousLesCommentaires = snapshot.data!.docs;
+
+                      if (tousLesCommentaires.isEmpty) {
+                        return const Text(
+                          'Aucun commentaire pour le moment.',
+                        );
+                      }
+
+                      final commentaires = _voirTousAvis
+                          ? tousLesCommentaires
+                          : tousLesCommentaires.take(5).toList();
+
+                      final currentUid =
+                          FirebaseAuth.instance.currentUser?.uid;
+                      const adminUid = 'rZASbWUSzCXrFOs8GqZd7YTD6A53';
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: commentaires.length,
+                            itemBuilder: (context, index) {
+                              final com = commentaires[index].data()
                                   as Map<String, dynamic>;
-                          return Card(
-                            elevation: 1,
-                            margin: const EdgeInsets.symmetric(vertical: 5),
-                            child: ListTile(
-                              leading: const CircleAvatar(
-                                backgroundColor: Colors.grey,
-                                child: Icon(Icons.person, color: Colors.white),
-                              ),
-                              title: Text(
-                                com['auteur'] ?? 'Anonyme',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
+                              final peutSupprimer = currentUid != null &&
+                                  (com['authorId'] == currentUid ||
+                                      currentUid == adminUid);
+
+                              return Card(
+                                child: ListTile(
+                                  leading: const CircleAvatar(
+                                    child: Icon(Icons.person),
+                                  ),
+                                  title: Text(com['auteur'] ?? 'Anonyme'),
+                                  subtitle: Text(com['texte'] ?? ''),
+                                  trailing: peutSupprimer
+                                      ? IconButton(
+                                          tooltip: 'Supprimer cet avis',
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                            color: Colors.red,
+                                          ),
+                                          onPressed: () =>
+                                              _supprimerCommentaire(
+                                            commentaires[index].id,
+                                          ),
+                                        )
+                                      : null,
                                 ),
+                              );
+                            },
+                          ),
+                          if (!_voirTousAvis &&
+                              tousLesCommentaires.length > 5)
+                            TextButton(
+                              onPressed: () =>
+                                  setState(() => _voirTousAvis = true),
+                              child: Text(
+                                'Voir tous les avis (${tousLesCommentaires.length})',
                               ),
-                              subtitle: Text(com['texte'] ?? ''),
-                              trailing: _estProprietaire
-                                  ? IconButton(
-                                      tooltip: 'Supprimer cet avis',
-                                      icon: const Icon(
-                                        Icons.delete_outline,
-                                        color: Colors.red,
-                                      ),
-                                      onPressed: () => _supprimerCommentaire(
-                                        commentaires[index].id,
-                                      ),
-                                    )
-                                  : null,
                             ),
-                          );
-                        },
+                        ],
                       );
                     },
                   ),
@@ -2541,6 +2573,7 @@ class _EcranProfessionnelState extends State<EcranProfessionnel> {
     'Autres',
   ];
 
+/// 🔥 NOUVEAU : Choisir une image depuis la galerie
   Future<void> _choisirImage() async {
     final picker = ImagePicker();
     final imageSource = await picker.pickImage(
@@ -2596,6 +2629,7 @@ class _EcranProfessionnelState extends State<EcranProfessionnel> {
     }
   }
 
+  /// 🔥 Publier le profil de l'artisan gratuitement
   Future<void> _publierGratuitement() async {
     if (!_cleFormulaire.currentState!.validate()) return;
     setState(() => _enChargement = true);
@@ -2635,9 +2669,10 @@ class _EcranProfessionnelState extends State<EcranProfessionnel> {
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.pushReplacement(
+        Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const EcranProfil()),
+          (route) => false,
         );
       }
     } catch (e) {
@@ -3010,11 +3045,13 @@ class EcranProfil extends StatefulWidget {
   State<EcranProfil> createState() => _EcranProfilState();
 }
 
+/// 🔥 ÉCRAN PROFIL (CLIENT OU ARTISAN)
 class _EcranProfilState extends State<EcranProfil> {
   File? _imageChoisie;
   bool _enChargement = false;
   String? _currentPaymentReference;
 
+  /// 🔥 DÉTERMINER LE RÔLE DE L'UTILISATEUR
   Future<String> _determinerRoleUtilisateur(String uid) async {
     final userDoc = await FirebaseFirestore.instance
         .collection('users')
@@ -3027,6 +3064,7 @@ class _EcranProfilState extends State<EcranProfil> {
     return 'client';
   }
 
+/// 🔥 DÉTERMINER LE CONTACT DE L'UTILISATEUR
   Future<String> _determinerContactUtilisateur(User utilisateur) async {
     final email = utilisateur.email;
     if (email == null || !email.endsWith('@serviceproci.app')) {
@@ -3044,6 +3082,7 @@ class _EcranProfilState extends State<EcranProfil> {
     return formaterNumeroIvoirien(numero) ?? numero;
   }
 
+/// 🔥 CHOISIR UNE IMAGE DE PROFIL
   Future<void> _choisirImage() async {
     final picker = ImagePicker();
     final imageSource = await picker.pickImage(
@@ -3055,6 +3094,7 @@ class _EcranProfilState extends State<EcranProfil> {
     }
   }
 
+/// 🔥 Uploader l'image de profil du client
   Future<String?> _uploaderImageClient(String uid) async {
     if (_imageChoisie == null) return null;
     try {
@@ -3071,6 +3111,7 @@ class _EcranProfilState extends State<EcranProfil> {
     }
   }
 
+/// 🔥 Uploader l'image de profil de l'artisan
   Future<String?> _uploaderImage(String uid) async {
     if (_imageChoisie == null) return null;
     try {
@@ -3086,6 +3127,7 @@ class _EcranProfilState extends State<EcranProfil> {
     }
   }
 
+/// 🔥 AJOUTER UNE PHOTO AU PORTFOLIO DE L'ARTISAN
   Future<void> _ajouterPhotoPortfolio() async {
     final picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
@@ -3200,6 +3242,7 @@ class _EcranProfilState extends State<EcranProfil> {
     }
   }
 
+  /// 🔥 SUPPRIMER UNE PHOTO DU PORTFOLIO
   Future<void> _supprimerPhotoPortfolio(
     String docId,
     Map<String, dynamic> portfolioItem,
@@ -3235,6 +3278,7 @@ class _EcranProfilState extends State<EcranProfil> {
     }
   }
 
+/// 🔥 CONFIRMER LA SUPPRESSION D'UNE PHOTO DU PORTFOLIO
   Future<void> _confirmerSuppressionPortfolio(
     String docId,
     Map<String, dynamic> portfolioItem,
@@ -3265,6 +3309,7 @@ class _EcranProfilState extends State<EcranProfil> {
     }
   }
 
+/// 🔥 AFFICHER UNE IMAGE DU PORTFOLIO EN PLEIN ÉCRAN
   void _afficherPortfolioPleinEcran(String imageUrl, String description) {
     showDialog(
       context: context,
@@ -3319,6 +3364,7 @@ class _EcranProfilState extends State<EcranProfil> {
     );
   }
 
+/// 🔥 AFFICHER UNE ERREUR DANS UN SNACKBAR
   void _afficherErreur(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -3326,183 +3372,200 @@ class _EcranProfilState extends State<EcranProfil> {
     );
   }
 
-  void _afficherBoitePhotoProfileClient(BuildContext context, String uid) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
-          title: const Text(
-            'Changer ma photo de profil',
-            textAlign: TextAlign.center,
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_imageChoisie != null)
-                  Column(
-                    children: [
-                      const Text(
-                        'Aperçu de la nouvelle photo:',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 10),
-                      CircleAvatar(
-                        radius: 60,
-                        backgroundImage: FileImage(_imageChoisie!),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
+/// 🔥 AFFICHER LA BOÎTE DE DIALOGUE POUR CHANGER LA PHOTO DE PROFIL DU CLIENT
+void _afficherBoitePhotoProfileClient(BuildContext context, String uid) {
+  showDialog(
+    context: context,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
+            ),
+            title: const Text(
+              'Changer ma photo de profil',
+              textAlign: TextAlign.center,
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_imageChoisie != null)
+                    Column(
+                      children: [
+                        const Text(
+                          'Aperçu de la nouvelle photo:',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 10),
+                        CircleAvatar(
+                          radius: 60,
+                          backgroundImage: FileImage(_imageChoisie!),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await _choisirImage();
+                      setDialogState(() {});
+                    },
+                    icon: const Icon(Icons.image),
+                    label: const Text('Sélectionner une image'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      foregroundColor: Colors.white,
+                    ),
                   ),
-                ElevatedButton.icon(
-                  onPressed: _choisirImage,
-                  icon: const Icon(Icons.image),
-                  label: const Text('Sélectionner une image'),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'Annuler',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              if (_imageChoisie != null)
+                ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
+                    backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
                   ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'Annuler',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-            if (_imageChoisie != null)
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () async {
-                  Navigator.pop(context);
-                  setState(() => _enChargement = true);
-                  final messenger = ScaffoldMessenger.of(context);
-                  String? photoUrl = await _uploaderImageClient(uid);
-                  if (photoUrl != null) {
-                    await FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(uid)
-                        .update({'photo_profil': photoUrl});
-                    messenger.showSnackBar(
-                      const SnackBar(
-                        content: Text('Photo de profil mise à jour ! 🎉'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                    if (mounted) setState(() => _imageChoisie = null);
-                  }
-                  if (mounted) setState(() => _enChargement = false);
-                },
-                child: const Text('Enregistrer'),
-              ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _afficherBoitePhotoProfile(
-    BuildContext context,
-    String docId,
-    Map<String, dynamic> donneesActuelles,
-  ) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
-          title: const Text('Changer ma photo', textAlign: TextAlign.center),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_imageChoisie != null)
-                  Column(
-                    children: [
-                      const Text(
-                        'Aperçu de la nouvelle photo:',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 10),
-                      CircleAvatar(
-                        radius: 60,
-                        backgroundImage: FileImage(_imageChoisie!),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                  ),
-                ElevatedButton.icon(
-                  onPressed: _choisirImage,
-                  icon: const Icon(Icons.image),
-                  label: const Text('Sélectionner une image'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'Annuler',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-            if (_imageChoisie != null)
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () async {
-                  Navigator.pop(context);
-                  setState(() => _enChargement = true);
-                  final messenger = ScaffoldMessenger.of(context);
-                  final utilisateur = FirebaseAuth.instance.currentUser;
-                  if (utilisateur != null) {
-                    String? photoUrl = await _uploaderImage(utilisateur.uid);
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    setState(() => _enChargement = true);
+                    final messenger = ScaffoldMessenger.of(context);
+                    String? photoUrl = await _uploaderImageClient(uid);
                     if (photoUrl != null) {
-                      if (docId.isEmpty) return;
                       await FirebaseFirestore.instance
-                          .collection('artisans')
-                          .doc(docId)
+                          .collection('users')
+                          .doc(uid)
                           .update({'photo_profil': photoUrl});
-                      if (mounted) {
-                        messenger.showSnackBar(
-                          const SnackBar(
-                            content: Text('Photo mise à jour avec succès ! 🎉'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      }
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('Photo de profil mise à jour ! 🎉'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
                       if (mounted) setState(() => _imageChoisie = null);
                     }
-                  }
-                  if (mounted) setState(() => _enChargement = false);
-                },
-                child: const Text('Enregistrer'),
-              ),
-          ],
-        );
-      },
-    );
-  }
+                    if (mounted) setState(() => _enChargement = false);
+                  },
+                  child: const Text('Enregistrer'),
+                ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
 
+  /// 🔥 AFFICHER LA BOÎTE DE DIALOGUE POUR CHANGER LA PHOTO DE PROFIL
+void _afficherBoitePhotoProfile(
+  BuildContext context,
+  String docId,
+  Map<String, dynamic> donneesActuelles,
+) {
+  showDialog(
+    context: context,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
+            ),
+            title: const Text('Changer ma photo', textAlign: TextAlign.center),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_imageChoisie != null)
+                    Column(
+                      children: [
+                        const Text(
+                          'Aperçu de la nouvelle photo:',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 10),
+                        CircleAvatar(
+                          radius: 60,
+                          backgroundImage: FileImage(_imageChoisie!),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await _choisirImage();
+                      setDialogState(() {});
+                    },
+                    icon: const Icon(Icons.image),
+                    label: const Text('Sélectionner une image'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'Annuler',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              if (_imageChoisie != null)
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    setState(() => _enChargement = true);
+                    final messenger = ScaffoldMessenger.of(context);
+                    final utilisateur = FirebaseAuth.instance.currentUser;
+                    if (utilisateur != null) {
+                      String? photoUrl = await _uploaderImage(utilisateur.uid);
+                      if (photoUrl != null) {
+                        if (docId.isEmpty) return;
+                        await FirebaseFirestore.instance
+                            .collection('artisans')
+                            .doc(docId)
+                            .update({'photo_profil': photoUrl});
+                        if (mounted) {
+                          messenger.showSnackBar(
+                            const SnackBar(
+                              content: Text('Photo mise à jour avec succès ! 🎉'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                        if (mounted) setState(() => _imageChoisie = null);
+                      }
+                    }
+                    if (mounted) setState(() => _enChargement = false);
+                  },
+                  child: const Text('Enregistrer'),
+                ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
+  /// 🔥 MODIFIER LE PROFIL DE L'ARTISAN
   void _modifierProfil(
     BuildContext context,
     String docId,
@@ -3624,51 +3687,75 @@ class _EcranProfilState extends State<EcranProfil> {
     );
   }
 
-  void _repondreCommentaire(
-    BuildContext context,
-    String artisanId,
-    String comId,
-    Map<String, dynamic> com,
-  ) {
-    final replyController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Répondre au commentaire'),
-          content: TextField(
-            controller: replyController,
-            decoration: const InputDecoration(labelText: 'Votre réponse'),
-            maxLines: 3,
+  /// 🔥 RÉPONDRE AU COMMENTAIRE
+/// 🔥 RÉPONDRE AU COMMENTAIRE
+void _repondreCommentaire(
+  BuildContext context,
+  String artisanId,
+  String comId,
+  Map<String, dynamic> com,
+) {
+  final replyController = TextEditingController();
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: const Text('Répondre au commentaire'),
+        content: TextField(
+          controller: replyController,
+          decoration: const InputDecoration(labelText: 'Votre réponse'),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (replyController.text.trim().isNotEmpty) {
-                  await FirebaseFirestore.instance
-                      .collection('artisans')
-                      .doc(artisanId)
-                      .collection('commentaires')
-                      .doc(comId)
-                      .update({
-                        'replyText': replyController.text.trim(),
-                        'replyTimestamp': FieldValue.serverTimestamp(),
-                      });
-                  if (mounted) Navigator.pop(context);
-                }
-              },
-              child: const Text('Envoyer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+          ElevatedButton(
+            onPressed: () async {
+              if (replyController.text.trim().isNotEmpty) {
+                final replyText = replyController.text.trim();
+                await FirebaseFirestore.instance
+                    .collection('artisans')
+                    .doc(artisanId)
+                    .collection('commentaires')
+                    .doc(comId)
+                    .update({
+                      'replyText': replyText,
+                      'replyTimestamp': FieldValue.serverTimestamp(),
+                    });
 
+                final clientId = com['authorId'];
+                final utilisateur = FirebaseAuth.instance.currentUser;
+                if (clientId is String &&
+                    clientId.isNotEmpty &&
+                    utilisateur != null) {
+                  await FirebaseFirestore.instance
+                      .collection('notifications')
+                      .add({
+                        'type': 'reponse_commentaire',
+                        'artisanId': artisanId,
+                        'targetUserId': clientId,
+                        'userId': utilisateur.uid,
+                        'commentId': comId,
+                        'replyText': replyText,
+                        'isRead': false,
+                        'timestamp': FieldValue.serverTimestamp(),
+                      });
+                }
+
+                if (mounted) Navigator.pop(context);
+              }
+            },
+            child: const Text('Envoyer'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+/// 🔥 OUVRIR PAIEMENT PREMIUM
   Future<void> _ouvrirPaiementPremium(
     BuildContext context,
     String docId,
@@ -3691,6 +3778,7 @@ class _EcranProfilState extends State<EcranProfil> {
     }
   }
 
+/// 🔥 INTERFACE PROFIL
   @override
   Widget build(BuildContext context) {
     final utilisateur = FirebaseAuth.instance.currentUser;
@@ -3786,7 +3874,6 @@ class _EcranProfilState extends State<EcranProfil> {
     );
   }
 
-
   Future<void> _supprimerCompte() async {
     final confirme = await showDialog<bool>(
       context: context,
@@ -3851,6 +3938,7 @@ class _EcranProfilState extends State<EcranProfil> {
     }
   }
 
+/// 🔥 REAUTHENTIFICATION POUR SUPPRESSION
   Future<bool> _reauthentifierPourSuppression() async {
     final motDePasseController = TextEditingController();
     final motDePasse = await showDialog<String>(
@@ -3890,7 +3978,7 @@ class _EcranProfilState extends State<EcranProfil> {
       return false;
     }
   }
-
+/// 🔥 SUPPRESSION COMPTE
   Future<void> _executerSuppressionCompte() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -4154,23 +4242,23 @@ class _EcranProfilState extends State<EcranProfil> {
                   ],
                 ),
               ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Profil enregistré avec succès !'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.save),
-                label: const Text('Enregistrer mon profil'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 50),
-                ),
-              ),
+              
+            
+                  
+                    
+                      
+                      
+                    
+                  
+                
+                
+                
+                
+                  
+                  
+                  
+                
+              
                _construireActionsCompte(),
             ],
           );
@@ -4179,6 +4267,8 @@ class _EcranProfilState extends State<EcranProfil> {
     );
   }
 
+/// 🔥 CARTE VERIFICATION ARTISAN
+/// Cette carte est affichée dans le profil de l'artisan pour indiquer le statut de sa vérification d'identité.
   Widget _construireCarteVerificationArtisan(String uid) {
     return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
@@ -4243,6 +4333,7 @@ class _EcranProfilState extends State<EcranProfil> {
     );
   }
 
+/// Construit l'interface de l'artisan
   Widget _construireInterfaceArtisan(User utilisateur) {
     return RefreshIndicator(
       onRefresh: () async {
@@ -4899,20 +4990,102 @@ class _EcranProfilState extends State<EcranProfil> {
                                       ),
                                     ],
                                     const SizedBox(height: 8),
-                                    if (com['replyText'] == null)
-                                      TextButton.icon(
-                                        onPressed: () => _repondreCommentaire(
-                                          context,
-                                          docId,
-                                          comId,
-                                          com,
-                                        ),
-                                        icon: const Icon(Icons.reply, size: 16),
-                                        label: const Text('Répondre'),
-                                        style: TextButton.styleFrom(
-                                          foregroundColor: Colors.blueAccent,
-                                        ),
-                                      ),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        if (com['replyText'] == null)
+                                          TextButton.icon(
+                                            onPressed: () =>
+                                                _repondreCommentaire(
+                                              context,
+                                              docId,
+                                              comId,
+                                              com,
+                                            ),
+                                            icon: const Icon(
+                                              Icons.reply,
+                                              size: 16,
+                                            ),
+                                            label: const Text('Répondre'),
+                                          )
+                                        else
+                                          const SizedBox.shrink(),
+                                        if (com['authorId'] ==
+                                            FirebaseAuth.instance.currentUser?.uid)
+                                          TextButton.icon(
+                                            onPressed: () async {
+                                              final confirme =
+                                                  await showDialog<bool>(
+                                                context: context,
+                                                builder: (context) =>
+                                                    AlertDialog(
+                                                  title: const Text(
+                                                    'Supprimer cet avis ?',
+                                                  ),
+                                                  content: const Text(
+                                                    'Cette action est irréversible.',
+                                                  ),
+                                                  actions: [
+                                                    TextButton(
+                                                      onPressed: () =>
+                                                          Navigator.pop(
+                                                        context,
+                                                        false,
+                                                      ),
+                                                      child: const Text(
+                                                        'Annuler',
+                                                      ),
+                                                    ),
+                                                    ElevatedButton(
+                                                      onPressed: () =>
+                                                          Navigator.pop(
+                                                        context,
+                                                        true,
+                                                      ),
+                                                      child: const Text(
+                                                        'Supprimer',
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                              if (confirme != true) return;
+                                              try {
+                                                await FirebaseFirestore.instance
+                                                    .collection('artisans')
+                                                    .doc(docId)
+                                                    .collection('commentaires')
+                                                    .doc(comId)
+                                                    .delete();
+                                              } catch (e) {
+                                                if (context.mounted) {
+                                                  ScaffoldMessenger.of(context)
+                                                      .showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text(
+                                                        'Impossible de supprimer cet avis.',
+                                                      ),
+                                                      backgroundColor: Colors.red,
+                                                    ),
+                                                  );
+                                                }
+                                              }
+                                            },
+                                            icon: const Icon(
+                                              Icons.delete_outline,
+                                              size: 16,
+                                              color: Colors.red,
+                                            ),
+                                            label: const Text(
+                                              'Supprimer',
+                                              style: TextStyle(
+                                                color: Colors.red,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
                                   ],
                                 ),
                               ),
@@ -5164,7 +5337,9 @@ class NotificationsPage extends StatelessWidget {
           return ListView.builder(
             itemCount: notifications.length,
             itemBuilder: (context, index) {
-              final notif = notifications[index].data() as Map<String, dynamic>;
+              final notif =
+                  notifications[index].data() as Map<String, dynamic>;
+              final notifId = notifications[index].id;
               final isRead = notif['isRead'] ?? false;
               final userName = notif['userName'] ?? 'Utilisateur';
               final commentText = notif['commentText'] ?? '';
@@ -5172,77 +5347,118 @@ class NotificationsPage extends StatelessWidget {
                   ? '${commentText.substring(0, 50)}...'
                   : commentText;
 
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                color: isRead ? Colors.white : Colors.blue.shade50,
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: isRead ? Colors.grey : Colors.blueAccent,
-                    child: Icon(
-                      isRead ? Icons.notifications_none : Icons.notifications,
-                      color: Colors.white,
-                    ),
-                  ),
-                  title: Text(
-                    notif['type'] == 'verification_identite'
-                        ? (notif['title'] ?? 'Mise à jour de vérification')
-                        : 'Nouveau commentaire de $userName',
-                    style: TextStyle(
-                      fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
-                    ),
-                  ),
-                  subtitle: Text(
-                    notif['type'] == 'verification_identite'
-                        ? (notif['body'] ?? '')
-                        : excerpt,
-                  ),
-                  trailing: isRead
-                      ? null
-                      : const Icon(
-                          Icons.circle,
-                          color: Colors.blueAccent,
-                          size: 12,
-                        ),
-                  onTap: () {
-                    // Debug: Log avant de marquer comme lu
-                    debugPrint(
-                      '🔔 Notification tap - ID: ${notifications[index].id}',
-                    );
-                    debugPrint('🔔 User ID: ${user.uid}');
-                    debugPrint('🔔 Notification data: $notif');
+              String titre;
+              String sousTitre;
+              if (notif['type'] == 'verification_identite') {
+                titre = notif['title'] ?? 'Mise à jour de vérification';
+                sousTitre = notif['body'] ?? '';
+              } else if (notif['type'] == 'reponse_commentaire') {
+                titre = 'Réponse à votre avis';
+                final replyText = notif['replyText'] ?? '';
+                sousTitre = replyText.length > 50
+                    ? '${replyText.substring(0, 50)}...'
+                    : replyText;
+              } else if (notif['type'] == 'rappel_premium') {
+                titre = '⏳ Votre abonnement Premium expire bientôt';
+                sousTitre =
+                    'Il vous reste 5 jours avant la fin de votre abonnement. Pensez à le renouveler.';
+              } else {
+                titre = 'Nouveau commentaire de $userName';
+                sousTitre = excerpt;
+              }
 
-                    // Marquer comme lu
-                    FirebaseFirestore.instance
-                        .collection('notifications')
-                        .doc(notifications[index].id)
-                        .update({'isRead': true})
-                        .then((_) {
-                          debugPrint('✅ Notification marquée comme lue');
-                        })
-                        .catchError((error) {
-                          debugPrint('❌ Erreur lors du marquage comme lu: $error');
-                        });
-
-                    // Debug: Log avant navigation
-                    debugPrint('🚀 Navigation vers MessageDetailPage');
-
-                    // Naviguer vers le détail
-                    Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => MessageDetailPage(
-                              notificationId: notifications[index].id,
-                              notificationData: notif,
-                            ),
+              return Dismissible(
+                key: Key(notifId),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Icon(Icons.delete, color: Colors.white),
+                ),
+                confirmDismiss: (direction) async {
+                  return await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text(
+                            'Supprimer cette notification ?',
                           ),
-                        )
-                        .then((_) {
-                          debugPrint('✅ Retour de MessageDetailPage');
-                        })
-                        .catchError((error) {
-                          debugPrint('❌ Erreur de navigation: $error');
-                        });
-                  },
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Annuler'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Supprimer'),
+                            ),
+                          ],
+                        ),
+                      ) ??
+                      false;
+                },
+                onDismissed: (direction) {
+                  FirebaseFirestore.instance
+                      .collection('notifications')
+                      .doc(notifId)
+                      .delete();
+                },
+                child: Card(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  color: isRead ? Colors.white : Colors.blue.shade50,
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor:
+                          isRead ? Colors.grey : Colors.blueAccent,
+                      child: Icon(
+                        isRead
+                            ? Icons.notifications_none
+                            : Icons.notifications,
+                        color: Colors.white,
+                      ),
+                    ),
+                    title: Text(
+                      titre,
+                      style: TextStyle(
+                        fontWeight:
+                            isRead ? FontWeight.normal : FontWeight.bold,
+                      ),
+                    ),
+                    subtitle: Text(sousTitre),
+                    trailing: isRead
+                        ? null
+                        : const Icon(
+                            Icons.circle,
+                            color: Colors.blueAccent,
+                            size: 12,
+                          ),
+                    onTap: () {
+                      FirebaseFirestore.instance
+                          .collection('notifications')
+                          .doc(notifId)
+                          .update({'isRead': true});
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MessageDetailPage(
+                            notificationId: notifId,
+                            notificationData: notif,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               );
             },

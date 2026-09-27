@@ -79,8 +79,13 @@ service cloud.firestore {
     match /notifications/{notificationId} {
       allow read, update: if signedIn()
         && (resource.data.targetUserId == request.auth.uid || isAdmin());
-      allow create: if signedIn();
-      allow delete: if isAdmin();
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.targetUserId is string
+        && request.resource.data.isRead == false
+        && exists(/databases/$(database)/documents/users/$(request.resource.data.targetUserId));
+      allow delete: if signedIn()
+        && (resource.data.targetUserId == request.auth.uid || isAdmin());
     }
 
     // Vue publique minimale : aucun document KYC ni téléphone n'est exposé.
@@ -96,8 +101,30 @@ service cloud.firestore {
 
       match /commentaires/{commentaireId} {
         allow read: if true;
-        allow create: if signedIn();
-        allow update, delete: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.texte is string
+          && request.resource.data.texte.size() > 0
+          && request.resource.data.auteur is string
+          && request.resource.data.replyText == null
+          && request.resource.data.replyTimestamp == null;
+        allow update: if signedIn()
+          && (
+            (
+              request.auth.uid == resource.data.authorId
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['texte'])
+              && request.resource.data.texte is string
+              && request.resource.data.texte.size() > 0
+            )
+            || (
+              request.auth.uid == artisanId
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['replyText', 'replyTimestamp'])
+              && request.resource.data.texte == resource.data.texte
+              && request.resource.data.auteur == resource.data.auteur
+            )
+          );
+        allow delete: if signedIn()
+          && (request.auth.uid == resource.data.authorId || isAdmin());
       }
     }
 

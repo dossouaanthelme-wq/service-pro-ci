@@ -439,6 +439,7 @@ exports.geniuspayWebhook = onRequest(
         transaction.update(artisanRef, {
           isPremium: true,
           premiumExpiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+          rappelEnvoye: false,
         });
         return true;
       });
@@ -495,5 +496,61 @@ exports.checkPremiumExpiration = onSchedule("every 24 hours", async () => {
   });
   await batch.commit();
 
+  return null;
+});
+
+exports.envoyerRappelsPremium = onSchedule("every 24 hours", async () => {
+  const now = Date.now();
+  const dans5Jours = now + 5 * 24 * 60 * 60 * 1000;
+
+  const snapshot = await admin.firestore()
+    .collection("artisans")
+    .where("isPremium", "==", true)
+    .get();
+
+  if (snapshot.empty) return null;
+
+  const batch = admin.firestore().batch();
+  let aEcrire = false;
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    const expiresAt = data.premiumExpiresAt?.toMillis?.();
+    if (!expiresAt) continue;
+
+    if (expiresAt > now && expiresAt <= dans5Jours && data.rappelEnvoye !== true) {
+      const notifRef = admin.firestore().collection("notifications").doc();
+      batch.set(notifRef, {
+        type: "rappel_premium",
+        artisanId: doc.id,
+        targetUserId: doc.id,
+        userId: doc.id,
+        isRead: false,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      batch.update(doc.ref, { rappelEnvoye: true });
+      aEcrire = true;
+
+      if (data.fcmToken) {
+        admin.messaging().send({
+          token: data.fcmToken,
+          notification: {
+            title: "⏳ Votre abonnement Premium expire bientôt",
+            body: "Il vous reste 5 jours avant la fin de votre abonnement Premium. Pensez à le renouveler.",
+          },
+          android: {
+            notification: {
+              channelId: "service_pro_channel",
+              priority: "high",
+              sound: "default",
+            },
+          },
+          data: { type: "rappel_premium", artisanId: doc.id },
+        }).catch((e) => console.error("Erreur push rappel premium :", e));
+      }
+    }
+  }
+
+  if (aEcrire) await batch.commit();
   return null;
 });
